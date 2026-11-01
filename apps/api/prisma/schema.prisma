@@ -1,0 +1,340 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  userId           String   @id @default(uuid()) @map("user_id")
+  mobileE164       String   @unique @map("mobile_e164")
+  panEncrypted     String   @map("pan_encrypted")
+  panHash          String   @unique @map("pan_hash")
+  panMasked        String   @map("pan_masked")
+  fullName         String   @map("full_name")
+  city             String
+  state            String
+  registrationDate DateTime @map("registration_date")
+  status           String   @default("ACTIVE") // ACTIVE, SUSPENDED, CLOSED
+  isDummy          Boolean  @default(true) @map("is_dummy")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relationships (ON DELETE RESTRICT per TRD 6.3)
+  vehicles       Vehicle[]
+  licences       Licence[]
+  challans       Challan[]
+  vaiScore       VaiScore?
+  scoreLedger    ScoreLedger[]
+  scoreSnapshots ScoreSnapshot[]
+  transactions   Transaction[]
+  consentRecords ConsentRecord[]
+  disputes       Dispute[]
+  scoreJobs      ScoreJob[]
+
+  @@map("users")
+}
+
+model Vehicle {
+  vehicleId        String    @id @default(uuid()) @map("vehicle_id")
+  userId           String    @map("user_id")
+  registrationNo   String    @unique @map("registration_no")
+  vehicleType      String    @map("vehicle_type") // TWO_WHEELER, FOUR_WHEELER, COMMERCIAL
+  manufacturer     String
+  model            String
+  registrationDate DateTime  @map("registration_date")
+  insuranceExpiry  DateTime? @map("insurance_expiry")
+  pucExpiry        DateTime? @map("puc_expiry")
+  rcValidityTill   DateTime  @map("rc_validity_till")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [userId], onDelete: Restrict)
+  challans     Challan[]
+  transactions Transaction[]
+
+  @@index([userId], name: "vehicles_user_idx")
+  @@map("vehicles")
+}
+
+model Licence {
+  licenceId        String   @id @default(uuid()) @map("licence_id")
+  userId           String   @map("user_id")
+  licenceNoMasked  String   @map("licence_no_masked")
+  licenceClass     String   @map("licence_class")
+  expiryDate       DateTime @map("expiry_date")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [userId], onDelete: Restrict)
+  transactions Transaction[]
+
+  @@map("licences")
+}
+
+model Challan {
+  challanId       String    @id @map("challan_id") // e.g. CH-GJ-20260412-0001
+  userId          String    @map("user_id")
+  vehicleId       String    @map("vehicle_id")
+  challanDate     DateTime  @map("challan_date")
+  challanType     String    @map("challan_type")
+  violationCode   String    @map("violation_code")
+  violationDesc   String    @map("violation_desc")
+  severity        String    // LOW, MEDIUM, HIGH
+  amountPaise     BigInt    @map("amount_paise")
+  status          String    // PAID, UNPAID, PENDING, DISPUTED, WAIVED
+  dueDate         DateTime  @map("due_date")
+  paymentDate     DateTime? @map("payment_date")
+  scoringEligible Boolean   @map("scoring_eligible")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [userId], onDelete: Restrict)
+  vehicle  Vehicle   @relation(fields: [vehicleId], references: [vehicleId], onDelete: Restrict)
+  disputes Dispute[]
+
+  @@index([userId, challanDate], name: "challans_user_date_idx")
+  @@index([vehicleId, challanDate], name: "challans_vehicle_idx")
+  @@map("challans")
+}
+
+model VaiScore {
+  userId                String   @id @map("user_id")
+  score                 Int      // CHECK between 500 and 900
+  category              String   // FAIR, GOOD, VERY_GOOD
+  scoreBeforeCap        Float    @map("score_before_cap")
+  scoringConfigVersion  Int      @map("scoring_config_version")
+  computedAt            DateTime @default(now()) @map("computed_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Restrict)
+
+  @@index([category], name: "score_distribution_idx")
+  @@map("vai_scores")
+}
+
+model ScoreLedger {
+  entryId       Int      @id @default(autoincrement()) @map("entry_id")
+  userId        String   @map("user_id")
+  eventType     String   @map("event_type") // VIOLATION, REPEAT, PAYMENT, UNPAID_OVERDUE, STREAK, VEHICLE, LICENCE, DECAY, CAP_ADJ, INIT
+  component     String   // V, RP, P, D, C, INIT
+  reasonCode    String   @map("reason_code")
+  refId         String?  @map("ref_id")
+  deltaPoints   Float    @map("delta_points")
+  balanceBefore Int      @map("balance_before")
+  balanceAfter  Int      @map("balance_after")
+  configVersion Int      @map("config_version")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Restrict)
+
+  @@index([userId, createdAt], name: "ledger_user_time_idx")
+  @@map("score_ledger")
+}
+
+model ScoreSnapshot {
+  snapshotId Int      @id @default(autoincrement()) @map("snapshot_id")
+  userId     String   @map("user_id")
+  period     String   // YYYY-MM-01 format
+  score      Int
+  category   String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Restrict)
+
+  @@unique([userId, period], name: "snapshots_user_period_uq")
+  @@map("score_snapshots")
+}
+
+model ServiceProvider {
+  providerId            String   @id @default(uuid()) @map("provider_id")
+  name                  String
+  serviceType           String   @map("service_type") // INSURANCE, PUC, RC, LICENCE
+  apiMode               String   @default("SIMULATED") @map("api_mode") // SIMULATED, LIVE
+  settlementAccountRef  String   @map("settlement_account_ref")
+  feeMode               String   @default("PROVIDER_PAYS") @map("fee_mode") // PROVIDER_PAYS, PASS_THROUGH
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  transactions Transaction[]
+
+  @@map("service_providers")
+}
+
+model RewardConfig {
+  id           Int      @id @default(autoincrement())
+  vaiCategory  String   @map("vai_category") // FAIR, GOOD, VERY_GOOD
+  serviceType  String   @map("service_type") // INSURANCE, PUC, RC, LICENCE
+  discountBps  Int      @map("discount_bps")
+  effectiveFrom DateTime @map("effective_from")
+  createdBy    String   @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([vaiCategory, serviceType, effectiveFrom])
+  @@map("reward_config")
+}
+
+model FeeConfig {
+  id            Int      @id @default(autoincrement())
+  optionCode    String   @map("option_code") // A, B
+  ppm           Int
+  mode          String   // PROVIDER_PAYS, PASS_THROUGH
+  effectiveFrom DateTime @map("effective_from")
+  isActive      Boolean  @default(false) @map("is_active")
+  createdBy     String   @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("fee_config")
+}
+
+model ScoringConfig {
+  version       Int      @id
+  parameters    String   // JSON TEXT
+  effectiveFrom DateTime @map("effective_from")
+  createdBy     String   @map("created_by")
+  changeReason  String   @map("change_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("scoring_config")
+}
+
+model Transaction {
+  txnId                     String    @id @map("txn_id") // TXN-YYYYMMDD-nnnnnn
+  userId                    String    @map("user_id")
+  vehicleId                 String?   @map("vehicle_id")
+  licenceId                 String?   @map("licence_id")
+  providerId                String    @map("provider_id")
+  serviceType               String    @map("service_type") // INSURANCE, PUC, RC, LICENCE
+  vaiCategoryAtTxn          String    @map("vai_category_at_txn")
+  baseAmountPaise           BigInt    @map("base_amount_paise")
+  discountBps               Int       @map("discount_bps")
+  discountPaise             BigInt    @map("discount_paise")
+  govtFundedPaise           BigInt    @map("govt_funded_paise")
+  payablePaise              BigInt    @map("payable_paise")
+  platformFeePpm            Int       @map("platform_fee_ppm")
+  platformFeePaise          BigInt    @map("platform_fee_paise")
+  feeMode                   String    @default("PROVIDER_PAYS") @map("fee_mode")
+  userTotalPaise            BigInt    @map("user_total_paise")
+  settlementToProviderPaise BigInt    @map("settlement_to_provider_paise")
+  status                    String    // CREATED, VALIDATED, PAYMENT_PENDING, SUCCESS, FAILED, TIMED_OUT, REFUNDED
+  paymentRef                String?   @map("payment_ref")
+  idempotencyKey            String?   @unique @map("idempotency_key")
+  quoteId                   String?   @map("quote_id")
+  quoteExpiresAt            DateTime? @map("quote_expires_at")
+  receiptUrl                String?   @map("receipt_url")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  user     User            @relation(fields: [userId], references: [userId], onDelete: Restrict)
+  vehicle  Vehicle?        @relation(fields: [vehicleId], references: [vehicleId], onDelete: Restrict)
+  licence  Licence?        @relation(fields: [licenceId], references: [licenceId], onDelete: Restrict)
+  provider ServiceProvider @relation(fields: [providerId], references: [providerId], onDelete: Restrict)
+  refunds  Refund[]
+
+  @@index([userId, createdAt], name: "txn_user_time_idx")
+  @@index([status, createdAt], name: "txn_status_idx")
+  @@map("transactions")
+}
+
+model Refund {
+  refundId         String   @id @default(uuid()) @map("refund_id")
+  txnId            String   @map("txn_id")
+  amountPaise      BigInt   @map("amount_paise")
+  feeReversedPaise BigInt   @map("fee_reversed_paise")
+  reasonCode       String   @map("reason_code")
+  adminId          String   @map("admin_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  transaction Transaction @relation(fields: [txnId], references: [txnId], onDelete: Restrict)
+
+  @@map("refunds")
+}
+
+model Admin {
+  adminId      String   @id @default(uuid()) @map("admin_id")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   // SUPER_ADMIN, OPS, ANALYST
+  mfaSecretRef String?  @map("mfa_secret_ref")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("admins")
+}
+
+model AuditLog {
+  logId      Int      @id @default(autoincrement()) @map("log_id")
+  actorType  String   @map("actor_type")
+  actorId    String   @map("actor_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  beforeJson String?  @map("before_json")
+  afterJson  String?  @map("after_json")
+  ipHash     String?  @map("ip_hash")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId, createdAt], name: "audit_entity_idx")
+  @@map("audit_logs")
+}
+
+model ConsentRecord {
+  consentId       String    @id @default(uuid()) @map("consent_id")
+  userId          String    @map("user_id")
+  purpose         String
+  granted         Boolean
+  versionTextHash String    @map("version_text_hash")
+  capturedAt      DateTime  @default(now()) @map("captured_at")
+  withdrawnAt     DateTime? @map("withdrawn_at")
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Restrict)
+
+  @@map("consent_records")
+}
+
+model Dispute {
+  disputeId       String    @id @default(uuid()) @map("dispute_id")
+  challanId       String    @map("challan_id")
+  userId          String    @map("user_id")
+  openedAt        DateTime  @default(now()) @map("opened_at")
+  resolvedAt      DateTime? @map("resolved_at")
+  outcome         String?   // UPHELD, REJECTED
+  resolverAdminId String?   @map("resolver_admin_id")
+  note            String
+
+  challan Challan @relation(fields: [challanId], references: [challanId], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [userId], onDelete: Restrict)
+
+  @@map("disputes")
+}
+
+model OtpSession {
+  sessionId  String    @id @default(uuid()) @map("session_id")
+  mobileHash String    @map("mobile_hash")
+  otpHash    String    @map("otp_hash")
+  expiresAt  DateTime  @map("expires_at")
+  attempts   Int       @default(0)
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@map("otp_sessions")
+}
+
+model ScoreJob {
+  jobId         String    @id @default(uuid()) @map("job_id")
+  userId        String    @map("user_id")
+  configVersion Int       @map("config_version")
+  status        String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  scheduledFor  DateTime  @default(now()) @map("scheduled_for")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  processedAt   DateTime? @map("processed_at")
+  error         String?
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Restrict)
+
+  @@map("score_jobs")
+}
