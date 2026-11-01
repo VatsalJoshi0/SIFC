@@ -1,5 +1,14 @@
 # Vehicle Accountability Index (VAI) – National Prototype
 
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-19.0-61dafb?logo=react)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite)](https://vitejs.dev/)
+[![Express](https://img.shields.io/badge/Express-4.21-black?logo=express)](https://expressjs.com/)
+[![Prisma](https://img.shields.io/badge/Prisma-6.2-2D3748?logo=prisma)](https://www.prisma.io/)
+[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38B2AC?logo=tailwindcss)](https://tailwindcss.com/)
+[![Compliance](https://img.shields.io/badge/Compliance-DPDP%20Act%202023-green)](https://www.meity.gov.in/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > **MoRTH / Parivahan-Compatible Citizen Driver Scoring, Transparent Ledger & Statutory Renewal Incentives Platform**  
 > *Built strictly in accordance with PRD, TRD, and Lead Architect Spec Patches P1–P12.*
 
